@@ -250,7 +250,8 @@ private:
     juce::Rectangle<int> header, tripPanel, ctrlPanel, modesPanel, pagePanel, tabArea, mixStrip, infoArea;
     std::array<juce::Rectangle<int>, 4> sections;
     std::array<juce::String, 4> sectionNames;
-    juce::Image background;
+    juce::Image background, ravenImg, ravenCrisp;   // logo : le corbeau de ravenn
+    float bgScale = 1.f;                            // fond rendu à la résolution réelle de l'écran
     int shownMode = -1, page = 0, shownSlot = -1;
     juce::String shownPreset, shownInfo, shownTimeText;
     bool shownSync = true, shownOverdose = false, shownSober = false;

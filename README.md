@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.png" width="140" alt="h.i.t.r"></p>
+
 # h.i.t.r
 
 **Psychoactive melody** — un plugin VST3 / AU qui fait entendre une mélodie comme on la ressentirait sous 50 substances, seules ou mélangées.

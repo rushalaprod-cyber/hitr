@@ -5,7 +5,7 @@ if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
 endif()
 
-project(hitr VERSION 1.2.0)
+project(hitr VERSION 1.2.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,7 +44,12 @@ juce_add_plugin(hitr
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     VST3_CATEGORIES Fx Modulation
+    ICON_BIG assets/icon.png
+    ICON_SMALL assets/icon.png
     COPY_PLUGIN_AFTER_BUILD FALSE)
+
+# Logo : le corbeau de ravenn
+juce_add_binary_data(hitrAssets SOURCES assets/raven.png)
 
 juce_generate_juce_header(hitr)
 
@@ -64,6 +69,7 @@ endif()
 
 target_link_libraries(hitr
     PRIVATE
+        hitrAssets
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -75,8 +81,8 @@ target_link_libraries(hitr
 juce_add_console_app(hitrTest PRODUCT_NAME "hitrTest")
 target_sources(hitrTest PRIVATE Tests/ModeTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/PresetManager.cpp)
 juce_generate_juce_header(hitrTest)
-target_compile_definitions(hitrTest PRIVATE JucePlugin_Name="h.i.t.r" JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+target_compile_definitions(hitrTest PRIVATE JucePlugin_Name="h.i.t.r" JucePlugin_VersionString="${PROJECT_VERSION}" JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
 if(MSVC)
     target_compile_options(hitrTest PRIVATE /utf-8)
 endif()
-target_link_libraries(hitrTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+target_link_libraries(hitrTest PRIVATE hitrAssets juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)

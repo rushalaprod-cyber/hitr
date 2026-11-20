@@ -1291,6 +1291,7 @@ HitrEditor::HitrEditor (HitrProcessor& p)
 {
     setLookAndFeel (&lnf);
     setWantsKeyboardFocus (true);
+    ravenImg = ImageCache::getFromMemory (BinaryData::raven_png, BinaryData::raven_pngSize);
 
     for (auto* c : std::initializer_list<Component*> { &dose, &trip, &mix, &output, &width, &widthFreq, &overdose, &sobriety,
                                                        &noLatency, &autoGain, &tripView, &layer2, &layer3 })
@@ -1592,8 +1593,10 @@ void HitrEditor::rebuildBackground()
     if (getWidth() <= 0) return;
     const auto& m = modes()[(size_t) jmax (0, shownMode)];
     const Colour c1 (m.c1), c2 (m.c2), c3 (m.c3);
-    background = Image (Image::ARGB, getWidth(), getHeight(), true);
+    // rendu aux pixels physiques de l'écran (Retina / 4K) : jamais flou
+    background = Image (Image::ARGB, jmax (1, roundToInt ((float) getWidth() * bgScale)), jmax (1, roundToInt ((float) getHeight() * bgScale)), true);
     Graphics g (background);
+    g.addTransform (AffineTransform::scale (bgScale));
     auto b = getLocalBounds().toFloat();
     const float sx = b.getWidth() / baseW;
     g.fillAll (hui::bg);
@@ -1653,7 +1656,14 @@ void HitrEditor::paint (Graphics& g)
     const float sx = (float) getWidth() / baseW;
     const bool od = param (proc, "overdose") > 0.5f;
 
-    if (background.isValid()) g.drawImageAt (background, 0, 0);
+    const float px = jmax (1.f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    if (std::abs (px - bgScale) > 0.01f || ! background.isValid())
+    {
+        bgScale = px;
+        rebuildBackground();
+    }
+    if (background.isValid())
+        g.drawImageTransformed (background, AffineTransform::scale (1.f / bgScale));
     else g.fillAll (hui::bg);
 
     // header
@@ -1666,31 +1676,58 @@ void HitrEditor::paint (Graphics& g)
     g.setGradientFill (ColourGradient (line.withAlpha (0.f), h.getX(), 0, line.withAlpha (0.8f), h.getCentreX(), 0, true));
     g.fillRect (h.removeFromBottom (1.f));
 
-    const float lx = 18.f * sx, ly = (float) header.getCentreY() - 16.f * sx, ls = 32.f * sx;
+    // LOGO : le corbeau de ravenn, redimensionné à la taille exacte des pixels de l'écran
+    // (calé sur un pixel physique entier, aucun rééchantillonnage au dessin : net, jamais pixellisé)
+    float tx = 18.f * sx;
+    if (ravenImg.isValid())
     {
-        Path spiral;
-        const float spin = (float) pulse * (od ? 3.f : 0.4f);
-        for (int s = 0; s < 60; ++s)
+        const float rh = (float) header.getHeight() * 0.92f;
+        const float rw = rh * (float) ravenImg.getWidth() / (float) ravenImg.getHeight();
+        const int tw = jmax (1, roundToInt (rw * px)), th = jmax (1, roundToInt (rh * px));
+        const Rectangle<float> box (std::round (8.f * sx * px) / px, std::round (((float) header.getCentreY() - rh * 0.5f) * px) / px,
+                                    (float) tw / px, (float) th / px);
+        if (ravenCrisp.getWidth() != tw || ravenCrisp.getHeight() != th)
         {
-            const float th = (float) s * 0.28f + spin;
-            const float rad = 1.f + (float) s * 0.26f * sx;
-            const float x = lx + ls * 0.5f + rad * std::cos (th), y = ly + ls * 0.5f + rad * std::sin (th);
-            if (s == 0) spiral.startNewSubPath (x, y); else spiral.lineTo (x, y);
+            Image src = ravenImg.convertedToFormat (Image::ARGB);
+            while (src.getWidth() > tw * 2 && src.getHeight() > th * 2)   // réduction par moitiés successives
+                src = src.rescaled (src.getWidth() / 2, src.getHeight() / 2, Graphics::highResamplingQuality);
+            ravenCrisp = src.rescaled (tw, th, Graphics::highResamplingQuality).convertedToFormat (Image::ARGB);
+            Image::BitmapData bd (ravenCrisp, Image::BitmapData::readWrite);
+            for (int y = 0; y < th; ++y)
+                for (int x = 0; x < tw; ++x)
+                {
+                    const float a = bd.getPixelColour (x, y).getFloatAlpha();
+                    bd.setPixelColour (x, y, Colours::white.withAlpha (jlimit (0.f, 1.f, (a - 0.12f) * 2.4f)));   // bords francs
+                }
         }
-        glowBlob (g, c1.withAlpha (0.4f), lx + ls * 0.5f, ly + ls * 0.5f, ls * 0.95f);
-        g.setGradientFill (ColourGradient (c1, lx, ly, c3, lx + ls, ly + ls, false));
-        g.strokePath (spiral, PathStrokeType (2.2f * sx, PathStrokeType::curved, PathStrokeType::rounded));
+        glowBlob (g, (od ? hui::danger : c1).withAlpha (0.28f), box.getCentreX(), box.getCentreY(), box.getHeight() * 0.7f);
+        g.drawImageTransformed (ravenCrisp, AffineTransform::scale (1.f / px).translated (box.getX(), box.getY()));
+        tx = box.getRight() + 6.f * sx;
     }
-    const float tx = lx + ls + 12.f * sx;
-    const Rectangle<float> titleR (tx, ly - 6.f * sx, 180.f * sx, 32.f * sx);
+    const Rectangle<float> titleR (tx, (float) header.getCentreY() - 24.f * sx, 150.f * sx, 32.f * sx);
     g.setFont (hui::font (30.f * sx, true, 0.04f));
     g.setColour (Colours::black.withAlpha (0.7f));
-    g.drawText ("h.i.t.r", titleR.translated (0.f, 2.f), Justification::centredLeft);
-    g.setColour (Colours::white);
-    g.drawText ("h.i.t.r", titleR, Justification::centredLeft);
-    g.setColour (hui::dim);
-    g.setFont (hui::font (8.f * sx, true, 0.35f));
-    g.drawText ("PSYCHOACTIVE MELODY  1.2", Rectangle<float> (tx + 2.f, ly + 25.f * sx, 200.f * sx, 12.f * sx), Justification::centredLeft);
+    g.drawText ("h.i.t.r", titleR.translated (0.f, 2.f), Justification::bottomLeft);
+    g.setGradientFill (ColourGradient (Colours::white, titleR.getX(), titleR.getY(), c1.interpolatedWith (Colours::white, 0.35f), titleR.getRight(), titleR.getBottom(), false));
+    g.drawText ("h.i.t.r", titleR, Justification::bottomLeft);
+    // version, bien visible
+    {
+        const String ver = "v" + String (JucePlugin_VersionString);
+        const auto vf = hui::font (9.5f * sx, true, 0.12f);
+        GlyphArrangement ga; ga.addLineOfText (vf, ver, 0.f, 0.f);
+        const float vw = ga.getBoundingBox (0, -1, true).getWidth() + 12.f * sx;
+        const Rectangle<float> pill (tx + 2.f, (float) header.getCentreY() + 11.f * sx, vw, 15.f * sx);
+        g.setColour (c1.withAlpha (0.18f));
+        g.fillRoundedRectangle (pill, 7.f * sx);
+        g.setColour (c1.withAlpha (0.8f));
+        g.drawRoundedRectangle (pill, 7.f * sx, 1.f);
+        g.setColour (Colours::white);
+        g.setFont (vf);
+        g.drawText (ver, pill, Justification::centred);
+        g.setColour (hui::dim);
+        g.setFont (hui::font (7.5f * sx, true, 0.3f));
+        g.drawText ("PSYCHOACTIVE MELODY", Rectangle<float> (pill.getRight() + 6.f * sx, pill.getY(), 140.f * sx, pill.getHeight()), Justification::centredLeft);
+    }
 
     drawPanel (g, tripPanel, "TRIP VIEW", od ? hui::danger : c1);
     drawPanel (g, modesPanel, "SUBSTANCES", c1);
