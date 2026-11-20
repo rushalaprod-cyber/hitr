@@ -11,6 +11,70 @@ HitrProcessor::HitrProcessor()
 {
     cur = live = neutralValues();
     step.fill (0.0f);
+    linkIn = apvts.getRawParameterValue ("in")->load();
+    linkClip = apvts.getRawParameterValue ("clip")->load();
+    startTimerHz (30);
+}
+
+// LINK (repris de ravenn) : IN et CLIPPER bougent en sens inverse quand LINK est actif
+void HitrProcessor::timerCallback()
+{
+    const bool on = apvts.getRawParameterValue ("link")->load() > 0.5f;
+    const float in = apvts.getRawParameterValue ("in")->load(), clip = apvts.getRawParameterValue ("clip")->load();
+    if (on && linkWasOn)
+    {
+        const float dIn = in - linkIn, dClip = clip - linkClip;
+        const bool inMoved = std::abs (dIn) > 1e-4f, clipMoved = std::abs (dClip) > 1e-4f;
+        if (inMoved && ! clipMoved)
+            setParamValueQuiet ("clip", juce::jlimit (-15.f, 15.f, clip - dIn));
+        else if (clipMoved && ! inMoved)
+            setParamValueQuiet ("in", juce::jlimit (-15.f, 15.f, in - dClip));
+    }
+    linkWasOn = on;
+    linkIn = apvts.getRawParameterValue ("in")->load();
+    linkClip = apvts.getRawParameterValue ("clip")->load();
+}
+
+void HitrProcessor::setParamValueQuiet (const juce::String& id, float value)
+{
+    if (auto* rp = apvts.getParameter (id))
+        rp->setValueNotifyingHost (rp->convertTo0to1 (value));
+}
+
+void HitrProcessor::resetPage (int page)
+{
+    static const juce::StringArray ids[4] = {
+        { "grain", "gsize", "gdens", "freeze", "sync", "division", "delayms", "transpose" },
+        { "heat", "thermType", "thermMove", "thermRate", "thermTone", "thermMix" },
+        { "ott", "ottTime", "ottLow", "ottMid", "ottHigh", "fatten", "fatColor", "tone", "toneLow", "toneAir" },
+        { "in", "link", "clip", "clipShape", "clipBand", "clipKnee", "clipMS", "clipXLo", "clipXHi", "body" } };
+    if (page < 0 || page > 3) return;
+    undo.beginNewTransaction ("Reset onglet");
+    for (auto& id : ids[page])
+        if (auto* rp = apvts.getParameter (id))
+        {
+            rp->beginChangeGesture();
+            rp->setValueNotifyingHost (rp->getDefaultValue());
+            rp->endChangeGesture();
+        }
+    undo.beginNewTransaction();
+}
+
+// RESET : tout par défaut, en une seule étape d'undo (SOBRIÉTÉ, latence et suréchantillonnage gardés)
+void HitrProcessor::resetAll()
+{
+    undo.beginNewTransaction ("Reset");
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            const auto id = rp->getParameterID();
+            if (id == "sobriety" || id == "noLatency" || id == "os") continue;
+            rp->beginChangeGesture();
+            rp->setValueNotifyingHost (rp->getDefaultValue());
+            rp->endChangeGesture();
+        }
+    undo.beginNewTransaction();
+    presets.setCurrentName (juce::String::fromUTF8 (u8"Défaut"));
 }
 
 const juce::StringArray& HitrProcessor::divisionNames()
@@ -107,7 +171,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout HitrProcessor::createLayout(
     fl ("toneLow", "Tone Low", -6.f, 6.f, 0.f, db);
     fl ("toneAir", "Tone Air", -6.f, 6.f, 0.f, db);
 
-    // CLIPPER (ravenn)
+    // IN + CLIPPER (ravenn), LINK : on monte l'un, l'autre descend d'autant
+    fl ("in", "In", -15.f, 15.f, 0.f, db);
+    tg ("link", "Link", false);
     fl ("clip", "Clipper", -15.f, 15.f, 0.f, db);
     ch ("clipShape", "Clip Shape", { "HARD", "SOFT", "TUBE" }, 0);
     ch ("clipBand", "Clip Band", { "FULL", "LOW", "MID", "HIGH" }, 0);
@@ -170,8 +236,9 @@ void HitrProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     }
     currentOs = -1;
 
-    for (auto* s : { &mixSmooth, &widthSmooth, &grainSmooth, &outSmooth })
+    for (auto* s : { &mixSmooth, &widthSmooth, &grainSmooth, &outSmooth, &inSmooth })
         s->reset (sr, 0.05);
+    inSmooth.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (apvts.getRawParameterValue ("in")->load()));
     bypassMix.reset (sr, 0.03);
     bypassMix.setCurrentAndTargetValue (apvts.getRawParameterValue ("sobriety")->load() > 0.5f ? 1.0f : 0.0f);
 
@@ -303,8 +370,12 @@ void HitrProcessor::processChunk (float* L, float* R, int n, double bpm, double 
     const float fs = (float) sr;
     const float beatSamples = (float) (60.0 / bpm) * fs;
 
-    // signal sec gardé pour SOBRIÉTÉ et l'AUTO GAIN
+    // signal sec gardé pour SOBRIÉTÉ et l'AUTO GAIN (avant IN : SOBRIÉTÉ = vraiment le son d'origine)
     for (int i = 0; i < n; ++i) { dryBuf.setSample (0, i, L[i]); dryBuf.setSample (1, i, R[i]); }
+
+    // IN (comme ravenn) : gain d'entrée, tout le reste réagit à ce qu'on envoie
+    inSmooth.setTargetValue (juce::Decibels::decibelsToGain (P ("in")));
+    for (int i = 0; i < n; ++i) { const float g = inSmooth.getNextValue(); L[i] *= g; R[i] *= g; }
 
     auto quantise = [&] (float hz, float& beatsOut)
     {
@@ -700,15 +771,15 @@ void HitrProcessor::processChunk (float* L, float* R, int n, double bpm, double 
             double x[2] = { uL[i], uR[i] };
             const double h = rHeat.next(), fa = rFat.next(), cg = rClip.next(), bo = rBody.next();
 
-            if (h > 0.0005)
             {
+                // toujours traités (même à 0) : leur rattrapage de niveau est prêt avant qu'on les monte
                 const double lf = std::sin (twoPi * thermPh);
                 thermal.process (x, 2, h, thType, tMove, lf, tMix);
-                modShow = lf * tMove;
+                if (h > 0.0005) modShow = lf * tMove;
             }
             thermPh += (float) tInc; thermPh -= std::floor (thermPh);
 
-            if (fa > 0.0005) fattener.process (x, 2, fa);
+            fattener.process (x, 2, fa);
 
             if (bo > 0.0005)
             {

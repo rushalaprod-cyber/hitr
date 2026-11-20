@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // Section "master" de h.i.t.r : filtres, TONE, OTT, Sausage Fattener, THERMAL et
 // le clipper de ravenn (mêmes formes HARD / SOFT / TUBE, genou, bande, M/S, BODY).
 // Filtres, OTT, Fattener et formes de clip repris tels quels de ravenn.
@@ -232,11 +232,40 @@ struct OTT
 };
 
 //==============================================================================
+// Rattrapage de niveau : ramène un signal traité au niveau du signal d'origine.
+// Descend vite (aucun pic quand l'effet s'active), remonte lentement (pas de pompage).
+struct LevelMatch
+{
+    double dE = 0, wE = 0, g = 1.0, det = 0, down = 0, up = 0;
+    double lo = 0.05, hi = 1.5, bias = 1.0;
+    void prepare (double fs, double detMs = 12.0, double downMs = 1.5, double upMs = 180.0)
+    {
+        auto c = [fs] (double ms) { return 1.0 - std::exp (-1.0 / (ms * 0.001 * fs)); };
+        det = c (detMs); down = c (downMs); up = c (upMs);
+        reset();
+    }
+    void reset() noexcept { dE = wE = 0; g = 1.0; }
+    inline double process (double dryPow, double wetPow) noexcept
+    {
+        dE += det * (dryPow - dE);
+        wE += det * (wetPow - wE);
+        if (dE > 1.0e-10 && wE > 1.0e-12)
+        {
+            const double t = std::clamp (std::sqrt (dE / wE) * bias, lo, hi);
+            g += (t < g ? down : up) * (t - g);
+        }
+        return g;
+    }
+};
+
+//==============================================================================
 // SAUSAGE FATTENER (ravenn) : compression écrasante + saturation, COLOR sombre -> mordant.
+// 1.2.2 : le volume est rattrapé (gras et dense, mais plus de saut de niveau).
 struct Fattener
 {
     std::array<Biquad, 2> pre, post, low;
     double env = 0, aC = 0, rC = 0, fs = 0, lastAmt = -1, lastCol = -1;
+    LevelMatch match;
 
     void prepare (double sampleRate)
     {
@@ -244,8 +273,10 @@ struct Fattener
         aC = 1.0 - std::exp (-1.0 / (0.0008 * fs));
         rC = 1.0 - std::exp (-1.0 / (0.06 * fs));
         lastAmt = lastCol = -1;
+        match.prepare (fs, 10.0, 1.0, 200.0);
+        match.bias = 1.12;   // un petit +1 dB de "gras" ressenti, pas plus
     }
-    void reset() noexcept { for (auto* a : { &pre, &post, &low }) for (auto& f : *a) f.reset(); env = 0; }
+    void reset() noexcept { for (auto* a : { &pre, &post, &low }) for (auto& f : *a) f.reset(); env = 0; match.reset(); }
     void set (double amt, double col) noexcept
     {
         if (std::abs (amt - lastAmt) < 1e-4 && std::abs (col - lastCol) < 1e-4) return;
@@ -258,6 +289,7 @@ struct Fattener
             low[(size_t) c].lowShelf (fs, 90, 0.7, 2.5 * amt);
         }
     }
+    // appelé en continu (même à 0) pour que le rattrapage soit toujours prêt
     inline void process (double* x, int nch, double amt) noexcept
     {
         const double drive = std::pow (10.0, 18.0 * amt / 20.0);
@@ -267,70 +299,94 @@ struct Fattener
         constexpr double thr = 0.25, ratio = 8.0;
         const double gr = env > thr ? std::pow (env / thr, -(1.0 - 1.0 / ratio)) : 1.0;
         const double wetAmt = std::min (1.0, amt * 1.5);
+        double v[2] {}, pd = 0, pw = 0;
         for (int c = 0; c < nch; ++c)
         {
-            double v = pre[(size_t) c].process (x[c]) * drive * gr;
-            v = std::tanh (v * 1.2) / 1.2;
-            v = low[(size_t) c].process (post[(size_t) c].process (v)) * 2.2;
-            x[c] += wetAmt * (v - x[c]);
+            double y = pre[(size_t) c].process (x[c]) * drive * gr;
+            y = std::tanh (y * 1.2) / 1.2;
+            v[c] = low[(size_t) c].process (post[(size_t) c].process (y)) * 2.2;
+            pd += x[c] * x[c]; pw += v[c] * v[c];
         }
+        const double mk = match.process (pd, pw);
+        if (wetAmt <= 0.0) return;
+        for (int c = 0; c < nch; ++c)
+            x[c] += wetAmt * (v[c] * mk - x[c]);
     }
 };
 
 //==============================================================================
 // THERMAL : distorsion à 2 étages en mouvement (esprit Output Thermal).
-// HEAT = quantité, 6 caractères, MOVE = modulation du drive et du filtre par un LFO
-// calé sur le tempo + l'enveloppe du signal, TONE = sombre -> brillant.
+// 1.2.2 : saturation "à niveau constant" (comme les saturations de ravenn) : le signal
+// est normalisé par son enveloppe, saturé, puis remis à son niveau. Résultat : aucun pic
+// quand on active FUZZ / RECTIFY, le volume reste stable, et HEAT monte progressivement.
 struct Thermal
 {
     enum Type { Tube, Fuzz, Fold, Rectify, Bits, Melt, numTypes };
+
+    // HEAT -> drive : très doux au début (courbe), fort au bout
+    static double driveFor (double heat) noexcept { return 1.0 + 13.0 * std::pow (std::clamp (heat, 0.0, 1.5), 2.2); }
 
     static double stage1 (int type, double x, double d) noexcept
     {
         switch (type)
         {
-            case Fuzz:    { const double y = std::clamp (x * d * 1.6, -1.0, 1.0); return 0.75 * y + 0.25 * std::tanh (3.0 * y); }
-            case Fold:    return std::sin (x * d * 1.25) * 0.9;
-            case Rectify: { const double t = std::tanh (x * d); return 0.55 * t + 0.45 * (std::abs (t) - 0.35); }
-            case Bits:    { const double t = std::tanh (x * d * 0.8); const double q = 2.0 + 30.0 / d; return std::round (t * q) / q; }
-            case Melt:    return std::tanh (x * d * 0.7) * 0.95;
-            default:      return shape::asym (x, d, 0.25) * std::min (1.0, 0.8 + 0.2 * d) / (1.0 + 0.04 * d);
+            case Fuzz:    { const double y = std::clamp (x * d * 1.3, -1.0, 1.0); return 0.7 * y + 0.3 * std::tanh (2.0 * y); }
+            case Fold:    return std::sin (x * (0.9 + 0.55 * (d - 1.0))) * 0.95;
+            case Rectify: { const double t = std::tanh (x * d); const double r = 0.2 + 0.2 * std::min (1.0, (d - 1.0) / 8.0);
+                            return (1.0 - r) * t + r * (std::abs (t) - 0.5); }   // octave au-dessus, centrée
+            case Bits:    { const double t = std::tanh (x * d * 0.8); const double q = 2.0 + 40.0 / d; return std::round (t * q) / q; }
+            case Melt:    return std::tanh (x * d * 0.8);
+            default:      // lampe : asymétrie légère (harmoniques paires), normalisée par sa valeur max (même niveau à tout HEAT)
+            {
+                constexpr double b = 0.1;
+                const double tb = std::tanh (b);
+                return (std::tanh (d * x + b) - tb) / (std::tanh (d + b) - tb);
+            }
         }
     }
 
-    // courbe de transfert complète (pour l'affichage)
+    // courbe de transfert complète (pour l'affichage), sur une entrée normalisée
     static double curve (int type, double x, double heat) noexcept
     {
-        const double d = 1.0 + heat * 14.0;
-        const double s1 = stage1 (type, x, d);
-        return std::tanh (s1 * (1.0 + heat * 2.0)) / std::tanh (1.0 + heat * 2.0);
+        const double d = driveFor (heat);
+        const double s1 = stage1 (type, x * 0.9, d);
+        const double k = 1.0 + heat * 1.5;
+        return std::tanh (s1 * k) / std::tanh (k);
     }
 
     std::array<Biquad, 2> preTilt, postTilt;
     std::array<double, 2> lp {}, slew {}, held {};
+    std::array<DCBlock, 2> dc;
+    LevelMatch match;
     int holdCount = 0;
-    double env = 0, envA = 0, envR = 0, fs = 48000, lastTone = -1;
+    double e2 = 0, envA = 0, envR = 0, fs = 48000, lastTone = -1;
 
     void prepare (double sampleRate)
     {
         fs = sampleRate;
-        envA = 1.0 - std::exp (-1.0 / (0.002 * fs));
-        envR = 1.0 - std::exp (-1.0 / (0.12 * fs));
+        envA = 1.0 - std::exp (-1.0 / (0.001 * fs));
+        envR = 1.0 - std::exp (-1.0 / (0.08 * fs));
+        for (auto& d : dc) d.set (fs, 8.0);
+        match.prepare (fs, 15.0, 2.0, 200.0);
+        match.lo = 0.4; match.hi = 1.6;
+        pkRel = std::exp (-1.0 / (0.05 * fs));
+        limRel = 1.0 - std::exp (-1.0 / (0.06 * fs));
         lastTone = -1;
-        setRates();
         reset();
     }
     void reset() noexcept
     {
         for (auto* a : { &preTilt, &postTilt }) for (auto& f : *a) f.reset();
-        lp.fill (0); slew.fill (0); held.fill (0); env = 0; holdCount = 0;
-        dryE = wetE = 0; makeup = 1.0;
+        lp.fill (0); slew.fill (0); held.fill (0); e2 = 0; holdCount = 0;
+        for (auto& d : dc) d.reset();
+        match.reset();
+        dryPk = 0; limG = 1.0;
     }
     void setTone (double tone) noexcept
     {
         if (std::abs (tone - lastTone) < 1e-4) return;
         lastTone = tone;
-        const double tilt = (tone - 0.5) * 14.0;
+        const double tilt = (tone - 0.5) * 12.0;
         for (int c = 0; c < 2; ++c)
         {
             preTilt[(size_t) c].highShelf (fs, 1200, 0.5, tilt);
@@ -338,28 +394,32 @@ struct Thermal
         }
     }
 
-    // lfo dans [-1, 1] fourni par l'appelant (calé sur le tempo)
+    // lfo dans [-1, 1] fourni par l'appelant (calé sur le tempo). Appelé en continu (même à HEAT 0).
     inline void process (double* x, int nch, double heat, int type, double move, double lfo, double mix) noexcept
     {
-        double det = 0;
-        for (int c = 0; c < nch; ++c) det = std::max (det, std::abs (x[c]));
-        env += (det > env ? envA : envR) * (det - env);
-        const double mod = std::clamp (move * (0.65 * lfo + 0.8 * std::min (1.0, env * 3.0) - 0.3), -1.0, 1.0);
-        const double h = std::clamp (heat * (1.0 + 0.6 * mod), 0.0, 1.5);
-        const double d = 1.0 + h * 14.0;
-        const double cutoff = std::clamp (3500.0 * std::pow (2.0, 2.2 * mod + 1.5 * (lastTone - 0.5)), 400.0, fs * 0.45);
-        const double a = std::exp (-2.0 * pi * cutoff / fs);
-        const double bitsHold = 1.0 + h * 10.0;
-        const bool doHold = type == Bits && ++holdCount >= (int) bitsHold;
-        if (doHold) holdCount = 0;
+        double p = 0;
+        for (int c = 0; c < nch; ++c) p = std::max (p, x[c] * x[c]);
+        e2 += (p > e2 ? envA : envR) * (p - e2);
+        const double env = std::sqrt (e2);
+        constexpr double floorLvl = 1.0e-3;   // -60 dBFS : en dessous, on s'efface (pas de bruit remonté)
+        const double ef = std::max (env, floorLvl);
+        const double gate = std::min (1.0, env / floorLvl);
 
-        double wet[2] {}, dryIn[2] {};
+        const double mod = std::clamp (move * (0.65 * lfo + 0.5 * std::min (1.0, env * 4.0) - 0.2), -1.0, 1.0);
+        const double h = std::clamp (heat * (1.0 + 0.5 * mod), 0.0, 1.5);
+        const double d = driveFor (h);
+        const double k = 1.0 + h * 1.5;
+        const double cutoff = std::clamp (4500.0 * std::pow (2.0, 2.0 * mod + 1.5 * (lastTone - 0.5)), 500.0, fs * 0.45);
+        const double a = std::exp (-2.0 * pi * cutoff / fs);
+        const bool doHold = type == Bits && ++holdCount >= (int) (1.0 + h * 8.0);
+        if (doHold) holdCount = 0;
+        const double fMix = 0.25 + 0.6 * move;
+
+        double wet[2] {}, pd = 0, pw = 0;
         for (int c = 0; c < nch; ++c)
         {
-            const double dry = x[c];
-            dryIn[c] = dry;
-            double v = preTilt[(size_t) c].process (dry);
-            v = stage1 (type, v, d);
+            const double v0 = preTilt[(size_t) c].process (x[c]);
+            double v = stage1 (type, v0 / ef * 0.9, d);   // entrée normalisée par l'enveloppe de crête (~ +-0.9)
             if (type == Bits)
             {
                 if (doHold) held[(size_t) c] = v;
@@ -367,36 +427,36 @@ struct Thermal
             }
             if (type == Melt)   // fonte : la pente est limitée, le son coule
             {
-                const double maxStep = 0.02 + 0.5 * (1.0 - std::min (1.0, h));
+                const double maxStep = 0.03 + 0.6 * (1.0 - std::min (1.0, h));
                 slew[(size_t) c] += std::clamp (v - slew[(size_t) c], -maxStep, maxStep);
                 v = slew[(size_t) c];
             }
-            // 2e étage : saturation douce, puis filtre qui bouge avec MOVE
-            v = std::tanh (v * (1.0 + h * 2.0)) / std::tanh (1.0 + h * 2.0);
-            lp[(size_t) c] = v * (1.0 - a) + lp[(size_t) c] * a;
-            const double fMix = 0.35 + 0.65 * move;
+            v = std::tanh (v * k) / std::tanh (k);                      // 2e étage
+            lp[(size_t) c] = v * (1.0 - a) + lp[(size_t) c] * a;          // filtre qui bouge avec MOVE
             v = lp[(size_t) c] * fMix + v * (1.0 - fMix);
-            wet[c] = postTilt[(size_t) c].process (v);
+            v = postTilt[(size_t) c].process (v) * ef * 1.05;           // retour au niveau d'origine (crête ~ identique)
+            v = v * gate + v0 * (1.0 - gate);
+            wet[c] = dc[(size_t) c].process (v);                        // RECTIFY : pas de décalage DC
+            pd += x[c] * x[c]; pw += wet[c] * wet[c];
         }
+        const double mk = match.process (pd, pw);
 
-        // niveau : le signal chauffé est ramené au niveau du signal d'origine (HEAT ne fait pas sauter le volume)
-        double pd = 0, pw = 0;
-        for (int c = 0; c < nch; ++c) { pd += dryIn[c] * dryIn[c]; pw += wet[c] * wet[c]; }
-        dryE += lvl * (pd - dryE);
-        wetE += lvl * (pw - wetE);
-        if (dryE > 1.0e-9 && wetE > 1.0e-12)
-            makeup += mk * (std::clamp (std::sqrt (dryE / wetE), 0.05, 4.0) - makeup);
+        // GARDE-CRÊTE : le son chauffé ne dépasse jamais la crête du son d'origine de plus de ~0,8 dB
+        // (attaque instantanée, relâchement 60 ms) — vaut pour les 6 caractères
+        double dryPeak = 0, wetPeak = 0;
+        for (int c = 0; c < nch; ++c) { dryPeak = std::max (dryPeak, std::abs (x[c])); wetPeak = std::max (wetPeak, std::abs (wet[c] * mk)); }
+        dryPk = std::max (dryPeak, dryPk * pkRel);
+        const double ceiling = dryPk * 1.12 + 1.0e-9;
+        const double need = wetPeak * limG > ceiling ? ceiling / wetPeak : 1.0;
+        if (need < limG) limG = need;
+        else limG += limRel * (1.0 - limG);
 
-        const double amt = mix * std::min (1.0, heat * 4.0);
+        const double amt = mix * std::min (1.0, heat * 3.0);
+        if (amt <= 0.0) return;
         for (int c = 0; c < nch; ++c)
-            x[c] = dryIn[c] + amt * (wet[c] * makeup - dryIn[c]);
+            x[c] += amt * (wet[c] * mk * limG - x[c]);
     }
 
-    double dryE = 0, wetE = 0, makeup = 1.0, lvl = 0.0005, mk = 0.0002;
-    void setRates() noexcept
-    {
-        lvl = 1.0 - std::exp (-1.0 / (0.08 * fs));
-        mk  = 1.0 - std::exp (-1.0 / (0.05 * fs));
-    }
+    double dryPk = 0, limG = 1.0, pkRel = 0.999, limRel = 0.001;
 };
 } // namespace gdsp

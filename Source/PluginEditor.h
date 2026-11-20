@@ -85,9 +85,13 @@ public:
     ModeTile (int index);
     void paintButton (juce::Graphics&, bool hover, bool down) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
     std::function<void (bool layer)> onPick;
     int index;
     int role = 0;   // 0 rien, 1 principale, 2 couche 2, 3 couche 3
+private:
+    bool layerGesture = false;   // clic droit / Maj+clic en cours : le relâchement ne doit rien déclencher
 };
 
 // Couche de mélange : nom, dosage, retirer
@@ -228,14 +232,14 @@ private:
     // DYNAMICS
     Knob ottK, ottTime, ottLow, ottMid, ottHigh, fatten, fatColor, tone, toneLow, toneAir;
     // CLIPPER
-    Knob clip, clipKnee, clipXLo, clipXHi;
+    Knob clip, clipKnee, clipXLo, clipXHi, inK;
     Segmented clipShape, clipBand, os;
-    Pill clipMS, body;
+    Pill clipMS, body, link;
     ClipMeter clipMeter;
 
     // header
     juce::TextButton prevBtn { "<" }, nextBtn { ">" }, presetNameBtn, saveBtn { "SAVE" }, copyBtn,
-                     undoBtn { "UNDO" }, redoBtn { "REDO" }, randomBtn;
+                     undoBtn { "UNDO" }, redoBtn { "REDO" }, randomBtn, resetBtn { "RESET" }, pageResetBtn { "RESET" };
     juce::OwnedArray<juce::TextButton> slotBtns, tabs;
     std::unique_ptr<juce::FileChooser> chooser;
 

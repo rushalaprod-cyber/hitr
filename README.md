@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/icon.png" width="140" alt="h.i.t.r"></p>
+﻿<p align="center"><img src="assets/icon.png" width="140" alt="h.i.t.r"></p>
 
 # h.i.t.r
 
@@ -22,12 +22,14 @@ Chaque substance a son mélange d'effets (espace, filtre qui respire, échos, ch
 
 | Zone | Contrôles |
 |---|---|
-| **Header** | presets (page avec catégories, recherche, SAVE / IMPORT / EXPORT / SUPPR. / DOSSIER), slots **A B C D** + copie, **UNDO / REDO** (Ctrl+Z / Ctrl+Y), **RANDOM** (ne touche pas au temps ni à la sortie), **NO LATENCY**, **SOBRIÉTÉ** (bypass) |
+| **Header** | presets (page avec catégories, recherche, SAVE / IMPORT / EXPORT / SUPPR. / DOSSIER), slots **A B C D** + copie, **UNDO / REDO** (Ctrl+Z / Ctrl+Y), **RESET**, **RANDOM** (ne touche pas au temps ni à la sortie), **NO LATENCY**, **SOBRIÉTÉ** (bypass) |
 | **DOSAGE** | DOSE, **OVERDOSE**, TRIP, MIX, WIDTH, **W. FREQ** (sous cette fréquence les basses restent mono), OUTPUT, **AUTO GAIN** |
 | **TRIP** | granulizer (GRAIN, SIZE, DENSITY, FREEZE), temps **BPM / MS** (division ou millisecondes), GAMME LIBRE, effets sur le son |
-| **THERMAL** | distorsion à 2 étages en mouvement : HEAT, caractère (TUBE, FUZZ, FOLD, RECTIFY, BITS, MELT), MOVE calé sur le tempo, TONE, MIX |
+| **THERMAL** | distorsion à 2 étages en mouvement, à niveau constant (aucun pic, volume stable) : HEAT, caractère (TUBE, FUZZ, FOLD, RECTIFY, BITS, MELT), MOVE calé sur le tempo, TONE, MIX |
 | **DYNAMICS** | OTT (DEPTH, TIME, LOW / MID / HIGH), SAUSAGE FATTENER (FATTEN, COLOR), TONE (TONE, LOW, AIR) |
-| **CLIPPER** | le clipper de ravenn : CLIPPER, HARD / SOFT / TUBE, KNEE, bande FULL / LOW / MID / HIGH, M/S, **BODY**, suréchantillonnage x1 → x8 |
+| **CLIPPER** | le clipper de ravenn : **IN** + CLIPPER reliés par **LINK** (comme ravenn), HARD / SOFT / TUBE, KNEE, bande FULL / LOW / MID / HIGH, M/S, **BODY**, suréchantillonnage x1 → x8 |
+
+Chaque onglet a son propre **RESET**.
 
 ## Qualité audio
 

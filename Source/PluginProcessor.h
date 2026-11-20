@@ -5,7 +5,7 @@
 #include "Mastering.h"
 #include "PresetManager.h"
 
-class HitrProcessor : public juce::AudioProcessor
+class HitrProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
     HitrProcessor();
@@ -56,6 +56,10 @@ public:
     // couche de mélange : ajoute / retire une substance (clic droit / Maj+clic)
     void toggleLayer (int modeIndex);
     void setParam (const juce::String& id, float value);
+    // RESET : tous les réglages par défaut (une étape d'undo)
+    void resetAll();
+    // RESET d'un onglet : 0 TRIP, 1 THERMAL, 2 DYNAMICS, 3 CLIPPER
+    void resetPage (int page);
 
     // pour l'interface
     std::atomic<float> outputLevel { 0.0f }, hostBpm { 120.0f }, delayMsShown { 0.0f };
@@ -63,6 +67,11 @@ public:
     std::atomic<int> latencyShown { 0 };
 
 private:
+    void timerCallback() override;   // LINK IN <-> CLIPPER (comme ravenn)
+    void setParamValueQuiet (const juce::String& id, float value);
+    float linkIn = 0.f, linkClip = 0.f;
+    bool linkWasOn = false;
+    juce::SmoothedValue<float> inSmooth;
     void resetDsp();
     void processChunk (float* L, float* R, int n, double bpm, double ppq, bool playing);
     void updateOversampling();

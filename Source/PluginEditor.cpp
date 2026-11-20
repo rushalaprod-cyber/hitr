@@ -332,12 +332,31 @@ ModeTile::ModeTile (int i) : Button (String (i)), index (i)
 
 void ModeTile::mouseDown (const MouseEvent& e)
 {
-    if (e.mods.isPopupMenu() || e.mods.isShiftDown())
+    layerGesture = e.mods.isPopupMenu() || e.mods.isShiftDown();
+    if (layerGesture)
     {
         if (onPick) onPick (true);
         return;
     }
     Button::mouseDown (e);
+}
+
+// pendant un clic droit, le moindre glissé repasserait le bouton en "enfoncé" et le
+// relâchement déclencherait un clic normal (qui remplaçait la substance principale)
+void ModeTile::mouseDrag (const MouseEvent& e)
+{
+    if (! layerGesture) Button::mouseDrag (e);
+}
+
+void ModeTile::mouseUp (const MouseEvent& e)
+{
+    if (layerGesture)
+    {
+        layerGesture = false;
+        repaint();
+        return;
+    }
+    Button::mouseUp (e);
 }
 
 void ModeTile::paintButton (Graphics& g, bool hover, bool down)
@@ -1281,11 +1300,13 @@ HitrEditor::HitrEditor (HitrProcessor& p)
       clipKnee (p.apvts, "clipKnee", "KNEE", u (u8"Genou du clip SOFT : 0 presque dur, 100 très doux.")),
       clipXLo (p.apvts, "clipXLo", "LOW | MID", u (u8"Coupure entre les bandes LOW et MID du clipper.")),
       clipXHi (p.apvts, "clipXHi", "MID | HIGH", u (u8"Coupure entre les bandes MID et HIGH du clipper.")),
+      inK (p.apvts, "in", "IN", u (u8"Gain d'entrée (comme ravenn). Tout le reste réagit à ce que tu envoies.")),
       clipShape (p.apvts, "clipShape", u (u8"HARD = net · SOFT = genou doux · TUBE = saturation à lampe")),
       clipBand (p.apvts, "clipBand", u (u8"FULL = tout · LOW / MID / HIGH = clippe une seule bande")),
       os (p.apvts, "os", u (u8"Suréchantillonnage de THERMAL / FATTENER / CLIPPER : moins d'aliasing, un peu de latence.")),
       clipMS (p.apvts, "clipMS", "M/S", u (u8"Clippe le centre et les côtés séparément.")),
       body (p.apvts, "body", "BODY", u (u8"La couleur de base de ravenn : bosse à 60 Hz et Side +1 dB.")),
+      link (p.apvts, "link", "LINK", u (u8"Relie IN et CLIPPER (comme ravenn) : tu montes l'un, l'autre descend d'autant. Le volume reste stable, seule la densité change.")),
       clipMeter (p),
       layer2 (p, 2), layer3 (p, 3), tripView (p), browser (p)
 {
@@ -1305,7 +1326,7 @@ HitrEditor::HitrEditor (HitrProcessor& p)
         place (*c, 1);
     for (auto* c : std::initializer_list<Component*> { &ottK, &ottTime, &ottLow, &ottMid, &ottHigh, &fatten, &fatColor, &tone, &toneLow, &toneAir })
         place (*c, 2);
-    for (auto* c : std::initializer_list<Component*> { &clip, &clipKnee, &clipXLo, &clipXHi, &clipShape, &clipBand, &os, &clipMS, &body, &clipMeter })
+    for (auto* c : std::initializer_list<Component*> { &clip, &clipKnee, &clipXLo, &clipXHi, &inK, &clipShape, &clipBand, &os, &clipMS, &body, &link, &clipMeter })
         place (*c, 3);
 
     // BPM / MS
@@ -1364,7 +1385,12 @@ HitrEditor::HitrEditor (HitrProcessor& p)
     randomBtn.setButtonText ("RANDOM");
     randomBtn.setTooltip (u (u8"Tire au sort substances, mélange, dose, granulizer, THERMAL, FATTENER, OTT et TONE. Ne touche pas au temps (BPM/MS, divisions, écho, TRIP) ni à la sortie."));
     randomBtn.onClick = [this] { proc.randomize(); };
-    for (auto* b : { &prevBtn, &nextBtn, &presetNameBtn, &saveBtn, &copyBtn, &undoBtn, &redoBtn, &randomBtn })
+    resetBtn.setTooltip (u (u8"Remet TOUS les réglages par défaut (SOBRIÉTÉ et latence gardées). Annulable avec UNDO."));
+    resetBtn.onClick = [this] { proc.resetAll(); };
+    pageResetBtn.setTooltip (u (u8"Remet par défaut uniquement les réglages de cet onglet. Annulable avec UNDO."));
+    pageResetBtn.onClick = [this] { proc.resetPage (page); };
+    addAndMakeVisible (pageResetBtn);
+    for (auto* b : { &prevBtn, &nextBtn, &presetNameBtn, &saveBtn, &copyBtn, &undoBtn, &redoBtn, &randomBtn, &resetBtn })
         addAndMakeVisible (b);
 
     const char* tabNames[4] = { "TRIP", "THERMAL", "DYNAMICS", "CLIPPER" };
@@ -1575,9 +1601,10 @@ void HitrEditor::applyModeColours()
     thermMove.setColour (Colour (0xffffb000));
     fatten.setColour (Colour (0xffff4f7a));
     clip.setColour (hui::danger);
-    for (auto* b : { &prevBtn, &nextBtn, &presetNameBtn, &saveBtn, &copyBtn, &undoBtn, &redoBtn, &randomBtn, &bpmBtn, &msBtn })
+    for (auto* b : { &prevBtn, &nextBtn, &presetNameBtn, &saveBtn, &copyBtn, &undoBtn, &redoBtn, &randomBtn, &resetBtn, &pageResetBtn, &bpmBtn, &msBtn })
         b->setColour (TextButton::buttonOnColourId, c1);
-    for (auto* b : { &freeze.button, &transpose.button, &noLatency.button, &autoGain.button, &clipMS.button, &body.button, &sobriety.button })
+    inK.setColour (c1.withRotatedHue (0.06f));
+    for (auto* b : { &freeze.button, &transpose.button, &noLatency.button, &autoGain.button, &clipMS.button, &body.button, &sobriety.button, &link.button })
         b->setColour (TextButton::buttonOnColourId, c1);
     for (auto* s : { &thermType, &thermRate }) s->setColour (Colour (0xffff6a00));
     for (auto* s : { &clipShape, &clipBand, &os }) s->setColour (c1);
@@ -1681,7 +1708,7 @@ void HitrEditor::paint (Graphics& g)
     float tx = 18.f * sx;
     if (ravenImg.isValid())
     {
-        const float rh = (float) header.getHeight() * 0.92f;
+        const float rh = (float) header.getHeight() * 1.0f;
         const float rw = rh * (float) ravenImg.getWidth() / (float) ravenImg.getHeight();
         const int tw = jmax (1, roundToInt (rw * px)), th = jmax (1, roundToInt (rh * px));
         const Rectangle<float> box (std::round (8.f * sx * px) / px, std::round (((float) header.getCentreY() - rh * 0.5f) * px) / px,
@@ -1696,8 +1723,9 @@ void HitrEditor::paint (Graphics& g)
             for (int y = 0; y < th; ++y)
                 for (int x = 0; x < tw; ++x)
                 {
-                    const float a = bd.getPixelColour (x, y).getFloatAlpha();
-                    bd.setPixelColour (x, y, Colours::white.withAlpha (jlimit (0.f, 1.f, (a - 0.12f) * 2.4f)));   // bords francs
+                    // contraste doux (courbe en S) : les plumes ressortent, l'anticrénelage reste (pas d'escalier)
+                    const float a = jlimit (0.f, 1.f, (bd.getPixelColour (x, y).getFloatAlpha() - 0.03f) / 0.55f);
+                    bd.setPixelColour (x, y, Colours::white.withAlpha (a * a * (3.f - 2.f * a)));
                 }
         }
         glowBlob (g, (od ? hui::danger : c1).withAlpha (0.28f), box.getCentreX(), box.getCentreY(), box.getHeight() * 0.7f);
@@ -1805,14 +1833,15 @@ void HitrEditor::resized()
 
     header = R (0, 0, baseW, 70);
     prevBtn.setBounds (R (262, 17, 34, 36));
-    presetNameBtn.setBounds (R (298, 17, 250, 36));
-    nextBtn.setBounds (R (550, 17, 34, 36));
-    saveBtn.setBounds (R (588, 17, 62, 36));
-    for (int i = 0; i < slotBtns.size(); ++i) slotBtns[i]->setBounds (R (662 + 32.f * (float) i, 17, 32, 36));
-    copyBtn.setBounds (R (792, 17, 36, 36));
-    undoBtn.setBounds (R (840, 17, 62, 36));
-    redoBtn.setBounds (R (904, 17, 62, 36));
-    randomBtn.setBounds (R (978, 17, 88, 36));
+    presetNameBtn.setBounds (R (298, 17, 210, 36));
+    nextBtn.setBounds (R (510, 17, 34, 36));
+    saveBtn.setBounds (R (548, 17, 62, 36));
+    for (int i = 0; i < slotBtns.size(); ++i) slotBtns[i]->setBounds (R (620 + 32.f * (float) i, 17, 32, 36));
+    copyBtn.setBounds (R (750, 17, 36, 36));
+    undoBtn.setBounds (R (796, 17, 58, 36));
+    redoBtn.setBounds (R (856, 17, 58, 36));
+    resetBtn.setBounds (R (920, 17, 62, 36));
+    randomBtn.setBounds (R (988, 17, 80, 36));
     noLatency.setBounds (R (1074, 17, 108, 36));
     sobriety.setBounds (R (1188, 17, 120, 36));
 
@@ -1841,14 +1870,16 @@ void HitrEditor::resized()
     trip.setBounds (R (1000, 104, 100, 120));
     mix.setBounds (R (1102, 104, 100, 120));
     width.setBounds (R (1204, 104, 100, 120));
-    widthFreq.setBounds (R (1000, 230, 100, 120));
+    autoGain.setBounds (R (1004, 246, 94, 32));
+    infoArea = R (1000, 284, 102, 44);
     output.setBounds (R (1102, 230, 100, 120));
-    autoGain.setBounds (R (1208, 244, 94, 32));
-    infoArea = R (1204, 282, 104, 44);
+    widthFreq.setBounds (R (1204, 230, 100, 120));   // juste sous WIDTH
 
     for (int i = 0; i < tabs.size(); ++i) tabs[i]->setBounds (R (784 + 131.f * (float) i, 392, 131, 38));
 
     for (auto& sct : sections) sct = {};
+    pageResetBtn.setBounds (R (1218, 450, 74, 26));   // en haut à droite de l'onglet
+    pageResetBtn.toFront (false);
     switch (page)
     {
         case 0:
@@ -1893,12 +1924,14 @@ void HitrEditor::resized()
             break;
         case 3:
             sections[0] = R (796, 448, 500, 410);
-            clip.setBounds (R (806, 478, 180, 210));
-            clipMeter.setBounds (R (998, 484, 286, 40));
-            clipShape.setBounds (R (998, 552, 286, 34));
-            clipBand.setBounds (R (998, 612, 286, 34));
-            clipMS.setBounds (R (998, 656, 92, 32));
-            body.setBounds (R (1096, 656, 92, 32));
+            inK.setBounds (R (806, 500, 106, 132));
+            clip.setBounds (R (914, 476, 170, 200));
+            link.setBounds (R (812, 640, 94, 32));
+            clipMeter.setBounds (R (1094, 484, 190, 40));
+            clipShape.setBounds (R (1094, 552, 190, 34));
+            clipBand.setBounds (R (1094, 612, 190, 34));
+            clipMS.setBounds (R (1094, 656, 92, 32));
+            body.setBounds (R (1192, 656, 92, 32));
             clipKnee.setBounds (R (806, 708, 100, 128));
             clipXLo.setBounds (R (910, 708, 100, 128));
             clipXHi.setBounds (R (1014, 708, 100, 128));

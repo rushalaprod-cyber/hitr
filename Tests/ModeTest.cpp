@@ -146,6 +146,120 @@ int main (int argc, char** argv)
         std::printf ("\nSOBRIÉTÉ (bypass) : latence %d éch., écart max %.2e  %s\n", lat, err, ok ? "OK" : "PROBLEME");
     }
 
+    // 1.2.2 : THERMAL / FATTEN — pas de pic à l'activation, volume stable, montée douce
+    {
+        std::printf ("\n");
+        // joue 3 s de mélodie à -12 dBFS ; "change" est appliqué à 1,5 s ; renvoie crête avant / après et RMS avant / après
+        auto run = [&] (std::function<void (HitrProcessor&)> before, std::function<void (HitrProcessor&)> change,
+                        float& pkBefore, float& pkAfter, double& rmsBefore, double& rmsAfter)
+        {
+            HitrProcessor p;
+            p.setPlayConfigDetails (2, 2, sr, block);
+            setP (p, "mode", 42.f); setP (p, "dose", 0.f); setP (p, "grain", 0.f);   // CBD à dose 0 : on n'entend que le master
+            before (p);
+            p.prepareToPlay (sr, block);
+            juce::AudioBuffer<float> buf (2, block);
+            juce::MidiBuffer midi;
+            double ph = 0, eB = 0, eA = 0; long nB = 0, nA = 0;
+            pkBefore = pkAfter = 0.f;
+            for (int pos = 0; pos < (int) (sr * 3.0); pos += block)
+            {
+                if (pos >= (int) (sr * 1.5) && pos < (int) (sr * 1.5) + block) change (p);
+                for (int i = 0; i < block; ++i)
+                {
+                    ph += notes[((pos + i) / (int) (sr / 4)) % 8] / sr;
+                    const float s = 0.25f * (float) std::sin (juce::MathConstants<double>::twoPi * ph);
+                    buf.setSample (0, i, s); buf.setSample (1, i, s);
+                }
+                p.processBlock (buf, midi);
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (0, i);
+                    const int t = pos + i;
+                    if (t > (int) (sr * 0.8) && t < (int) (sr * 1.5)) { pkBefore = juce::jmax (pkBefore, std::abs (v)); eB += v * v; ++nB; }
+                    if (t >= (int) (sr * 1.5) && t < (int) (sr * 1.8)) pkAfter = juce::jmax (pkAfter, std::abs (v));
+                    if (t > (int) (sr * 2.2)) { eA += v * v; ++nA; }
+                }
+            }
+            rmsBefore = std::sqrt (eB / juce::jmax (1L, nB)); rmsAfter = std::sqrt (eA / juce::jmax (1L, nA));
+        };
+        auto db = [] (double a, double b) { return 20.0 * std::log10 ((a + 1e-12) / (b + 1e-12)); };
+
+        for (int type = 0; type < 6; ++type)
+        {
+            float pb, pa; double rb, ra;
+            run ([] (HitrProcessor&) {}, [type] (HitrProcessor& p) { setP (p, "thermType", (float) type); setP (p, "heat", 0.8f); }, pb, pa, rb, ra);
+            const double peakJump = db (pa, pb), level = db (ra, rb);
+            const bool ok = peakJump < 1.5 && std::abs (level) < 3.0;   // crête tenue à +1,5 dB max
+            if (! ok) ++failures;
+            std::printf ("THERMAL %-8s activé à 80 %% : pic %+5.1f dB, volume %+5.1f dB  %s\n",
+                         HitrProcessor::thermalTypeNames()[type].toRawUTF8(), peakJump, level, ok ? "OK" : "PROBLEME");
+        }
+        {
+            // HEAT à 15 % : doit rester discret (écart au son propre bien en dessous du signal)
+            HitrProcessor a, b;
+            for (auto* p : { &a, &b }) { p->setPlayConfigDetails (2, 2, sr, block); setP (*p, "mode", 42.f); setP (*p, "dose", 0.f); setP (*p, "grain", 0.f); setP (*p, "thermType", 1.f); }
+            setP (b, "heat", 0.15f);
+            a.prepareToPlay (sr, block); b.prepareToPlay (sr, block);
+            juce::AudioBuffer<float> ba (2, block), bb (2, block);
+            juce::MidiBuffer midi;
+            double ph = 0, eSig = 0, eDiff = 0;
+            for (int pos = 0; pos < (int) (sr * 2.0); pos += block)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    ph += notes[((pos + i) / (int) (sr / 4)) % 8] / sr;
+                    const float s = 0.25f * (float) std::sin (juce::MathConstants<double>::twoPi * ph);
+                    ba.setSample (0, i, s); ba.setSample (1, i, s); bb.setSample (0, i, s); bb.setSample (1, i, s);
+                }
+                a.processBlock (ba, midi); b.processBlock (bb, midi);
+                if (pos > sr * 0.5)
+                    for (int i = 0; i < block; ++i) { const float x = ba.getSample (0, i), y = bb.getSample (0, i); eSig += x * x; eDiff += (y - x) * (y - x); }
+            }
+            const double rel = 10.0 * std::log10 ((eDiff + 1e-12) / (eSig + 1e-12));
+            const bool ok = rel < -14.0;
+            if (! ok) ++failures;
+            std::printf ("THERMAL FUZZ à 15 %% : distorsion ajoutée %.1f dB sous le signal  %s\n", rel, ok ? "OK (montée douce)" : "PROBLEME");
+        }
+        {
+            float pb, pa; double rb, ra;
+            run ([] (HitrProcessor&) {}, [] (HitrProcessor& p) { setP (p, "fatten", 1.f); }, pb, pa, rb, ra);
+            const double level = db (ra, rb), peakJump = db (pa, pb);
+            const bool ok = level < 2.5 && peakJump < 4.0;
+            if (! ok) ++failures;
+            std::printf ("FATTEN 0 -> 100 %% : volume %+5.1f dB, pic %+5.1f dB  %s\n", level, peakJump, ok ? "OK" : "PROBLEME");
+        }
+        {
+            // LINK : IN +4 dB -> CLIPPER -4 dB (et RESET remet tout)
+            HitrProcessor p;
+            setP (p, "link", 1.f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+            setP (p, "in", 4.f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+            const float clipAfter = p.apvts.getRawParameterValue ("clip")->load();
+            setP (p, "clip", 2.f);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+            const float inAfter = p.apvts.getRawParameterValue ("in")->load();
+            const bool okLink = std::abs (clipAfter + 4.f) < 0.05f && std::abs (inAfter - (4.f - 6.f)) < 0.05f;
+            if (! okLink) ++failures;
+            std::printf ("LINK : IN +4 -> CLIPPER %+.1f dB ; CLIPPER -4 -> +2 -> IN %+.1f dB  %s\n", clipAfter, inAfter, okLink ? "OK" : "PROBLEME");
+            setP (p, "heat", 0.7f); setP (p, "mode2", 5.f); setP (p, "sobriety", 1.f);
+            p.resetAll();
+            const bool okReset = p.apvts.getRawParameterValue ("heat")->load() == 0.f && p.apvts.getRawParameterValue ("in")->load() == 0.f
+                                 && p.apvts.getRawParameterValue ("mode2")->load() == 0.f && p.apvts.getRawParameterValue ("sobriety")->load() > 0.5f;
+            if (! okReset) ++failures;
+            std::printf ("RESET : tout par défaut, SOBRIÉTÉ gardée  %s\n", okReset ? "OK" : "PROBLEME");
+            // RESET d'onglet : THERMAL seul
+            setP (p, "heat", 0.6f); setP (p, "thermType", 3.f); setP (p, "fatten", 0.5f); setP (p, "grain", 0.9f);
+            p.resetPage (1);
+            const bool okPage = p.apvts.getRawParameterValue ("heat")->load() == 0.f && p.apvts.getRawParameterValue ("thermType")->load() == 0.f
+                                && std::abs (p.apvts.getRawParameterValue ("fatten")->load() - 0.5f) < 1e-4f
+                                && std::abs (p.apvts.getRawParameterValue ("grain")->load() - 0.9f) < 1e-4f;
+            if (! okPage) ++failures;
+            std::printf ("RESET onglet THERMAL : THERMAL remis à zéro, les autres onglets intacts  %s\n", okPage ? "OK" : "PROBLEME");
+        }
+    }
+
     // COMPATIBILITÉ : un projet sauvé en 1.0 ou 1.1 doit se rouvrir à l'identique
     {
         auto check = [&] (const char* label, const char* xmlText, std::initializer_list<std::pair<const char*, float>> expect)
