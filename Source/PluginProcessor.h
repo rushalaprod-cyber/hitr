@@ -60,6 +60,8 @@ public:
     void resetAll();
     // RESET d'un onglet : 0 TRIP, 1 THERMAL, 2 DYNAMICS, 3 CLIPPER
     void resetPage (int page);
+    // LINK IN <-> CLIPPER (appelé par le minuteur, ou directement par le test)
+    void linkTick();
 
     // pour l'interface
     std::atomic<float> outputLevel { 0.0f }, hostBpm { 120.0f }, delayMsShown { 0.0f };

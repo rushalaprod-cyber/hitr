@@ -232,13 +232,14 @@ int main (int argc, char** argv)
         {
             // LINK : IN +4 dB -> CLIPPER -4 dB (et RESET remet tout)
             HitrProcessor p;
+            // (on appelle la logique de LINK directement : sur un serveur sans écran, les minuteurs ne tournent pas)
             setP (p, "link", 1.f);
-            juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+            p.linkTick();
             setP (p, "in", 4.f);
-            juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+            p.linkTick();
             const float clipAfter = p.apvts.getRawParameterValue ("clip")->load();
             setP (p, "clip", 2.f);
-            juce::MessageManager::getInstance()->runDispatchLoopUntil (150);
+            p.linkTick();
             const float inAfter = p.apvts.getRawParameterValue ("in")->load();
             const bool okLink = std::abs (clipAfter + 4.f) < 0.05f && std::abs (inAfter - (4.f - 6.f)) < 0.05f;
             if (! okLink) ++failures;

@@ -17,7 +17,9 @@ HitrProcessor::HitrProcessor()
 }
 
 // LINK (repris de ravenn) : IN et CLIPPER bougent en sens inverse quand LINK est actif
-void HitrProcessor::timerCallback()
+void HitrProcessor::timerCallback() { linkTick(); }
+
+void HitrProcessor::linkTick()
 {
     const bool on = apvts.getRawParameterValue ("link")->load() > 0.5f;
     const float in = apvts.getRawParameterValue ("in")->load(), clip = apvts.getRawParameterValue ("clip")->load();
