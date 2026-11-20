@@ -1,0 +1,7 @@
+build/
+out/
+external/
+dist/*.exe
+dist/*.vst3/
+.vs/
+*.user
