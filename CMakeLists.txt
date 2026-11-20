@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 # macOS : binaire universel (Apple Silicon + Intel)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "")
 if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
 endif()
 
-project(hitr VERSION 1.1.0)
+project(hitr VERSION 1.2.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,7 +50,8 @@ juce_generate_juce_header(hitr)
 
 target_sources(hitr PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/PresetManager.cpp)
 
 target_compile_definitions(hitr PUBLIC
     JUCE_WEB_BROWSER=0
@@ -70,9 +71,9 @@ target_link_libraries(hitr
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
 
-# Test des 25 modes hors DAW
+# Test des 50 substances hors DAW
 juce_add_console_app(hitrTest PRODUCT_NAME "hitrTest")
-target_sources(hitrTest PRIVATE Tests/ModeTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+target_sources(hitrTest PRIVATE Tests/ModeTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/PresetManager.cpp)
 juce_generate_juce_header(hitrTest)
 target_compile_definitions(hitrTest PRIVATE JucePlugin_Name="h.i.t.r" JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
 if(MSVC)

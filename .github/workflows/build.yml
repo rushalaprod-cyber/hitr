@@ -1,4 +1,4 @@
-name: build
+﻿name: build
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --target hitr_VST3 hitr_Standalone hitrTest --parallel
 
-      - name: Test des 25 modes
+      - name: Test des 50 substances
         run: build\hitrTest_artefacts\Release\hitrTest.exe
 
       - name: Paquet
@@ -29,7 +29,7 @@ jobs:
           Copy-Item -Recurse "build\hitr_artefacts\Release\VST3\h.i.t.r.vst3" out\
           Copy-Item "build\hitr_artefacts\Release\Standalone\h.i.t.r.exe" out\
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path out\* -DestinationPath dist\hitr-1.1.0-windows.zip -Force
+          Compress-Archive -Path out\* -DestinationPath dist\hitr-1.2.0-windows.zip -Force
 
       - uses: actions/upload-artifact@v4
         with:
@@ -47,13 +47,13 @@ jobs:
       - name: Build
         run: cmake --build build --target hitr_VST3 hitr_AU hitr_Standalone hitrTest --parallel 4
 
-      - name: Test des 25 modes
+      - name: Test des 50 substances
         run: build/hitrTest_artefacts/Release/hitrTest
 
       - name: Installeur .pkg (VST3 + AU + app, universel Intel / Apple Silicon)
         run: |
           chmod +x packaging/macos/package.sh
-          packaging/macos/package.sh build/hitr_artefacts/Release dist 1.1.0
+          packaging/macos/package.sh build/hitr_artefacts/Release dist 1.2.0
 
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +62,7 @@ jobs:
 
       - name: Validation Audio Unit (auval)
         run: |
-          sudo installer -pkg dist/hitr-1.1.0-macos.pkg -target /
+          sudo installer -pkg dist/hitr-1.2.0-macos.pkg -target /
           killall -9 AudioComponentRegistrar || true
           auval -v aufx Hitr Hitr
 

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <JuceHeader.h>
 #include <array>
 #include <initializer_list>
@@ -60,6 +60,7 @@ enum P
 };
 
 using Values = std::array<float, NUM_P>;
+constexpr int numModes = 50;
 
 // Paramètres qui ne sont PAS dosés (vitesses, tailles...) : ils prennent
 // directement la valeur du mode.
@@ -89,7 +90,7 @@ inline Values neutralValues()
 
 enum class Visual
 {
-    Smoke, Tunnel, Kaleido, Waves, Geometry, Pulse, Strobe, Glitch, Melt, Rays, Vortex
+    Smoke, Tunnel, Kaleido, Waves, Geometry, Pulse, Strobe, Glitch, Melt, Rays, Vortex, Aurora, Lattice, Mandala, Rain
 };
 
 struct Mode
@@ -114,9 +115,9 @@ inline Mode makeMode (const char* name, const char* shortName, const char* desc,
 
 // Granulizer de chaque mode : mix, taille ms, densité/s, spray ms, harmonies, inversion, réinjection, étalement
 struct GrainFlavour { float mix, size, dens, spray, pitch, rev, fb, spread; };
-inline const std::array<GrainFlavour, 25>& grainFlavours()
+inline const std::array<GrainFlavour, numModes>& grainFlavours()
 {
-    static const std::array<GrainFlavour, 25> g =
+    static const std::array<GrainFlavour, numModes> g =
     {{
         { 0.25f, 180, 12,  120, 0, 0.0f,  0.20f, 0.6f },  // cannabis : halo doux
         { 0.50f, 260,  8,  600, 2, 0.3f,  0.40f, 0.8f },  // kétamine : fragments figés, octave basse
@@ -143,15 +144,40 @@ inline const std::array<GrainFlavour, 25>& grainFlavours()
         { 0.55f, 300,  8, 1200, 2, 0.5f,  0.45f, 0.9f },  // datura : souvenirs déformés
         { 0.30f,  90, 20,   60, 1, 0.0f,  0.25f, 0.9f },  // 3-MMC
         { 0.50f,  40, 30,  300, 2, 0.3f,  0.30f, 0.4f },  // DXM : robot pixelisé
+        { 0.30f, 280,  7,  180, 2, 0.0f,  0.30f, 0.6f },  // morphine
+        { 0.35f, 320,  6,  300, 2, 0.1f,  0.35f, 0.7f },  // opium
+        { 0.25f, 400,  4,  500, 2, 0.0f,  0.30f, 0.3f },  // fentanyl
+        { 0.15f, 200,  8,  100, 0, 0.0f,  0.15f, 0.4f },  // tramadol
+        { 0.15f, 160, 10,   80, 0, 0.0f,  0.15f, 0.5f },  // kratom
+        { 0.35f, 110, 18,   70, 1, 0.0f,  0.25f, 1.0f },  // ecstasy
+        { 0.30f,  60, 28,   50, 1, 0.05f, 0.20f, 0.8f },  // 4-MMC
+        { 0.40f, 120, 15,  350, 2, 0.3f,  0.35f, 0.5f },  // PCP
+        { 0.45f, 240, 10,  700, 3, 0.2f,  0.40f, 0.9f },  // ibogaïne
+        { 0.70f, 300, 12,  800, 4, 0.2f,  0.60f, 1.0f },  // 5-MeO-DMT
+        { 0.30f, 180, 12,  200, 3, 0.1f,  0.30f, 0.8f },  // LSA
+        { 0.45f,  90, 24,  250, 4, 0.15f, 0.35f, 1.0f },  // DOM
+        { 0.40f, 260,  9,  400, 2, 0.25f, 0.35f, 0.7f },  // amanite
+        { 0.30f, 320,  6,  500, 2, 0.1f,  0.30f, 0.6f },  // muscade
+        { 0.30f, 150, 14,  250, 1, 0.1f,  0.30f, 0.8f },  // absinthe
+        { 0.10f,  40, 25,   20, 0, 0.0f,  0.05f, 0.3f },  // adderall
+        { 0.05f,  40, 20,   20, 0, 0.0f,  0.05f, 0.3f },  // modafinil
+        { 0.10f, 200,  6,  100, 0, 0.0f,  0.10f, 0.4f },  // CBD
+        { 0.10f, 120, 10,   80, 0, 0.0f,  0.10f, 0.4f },  // nicotine
+        { 0.20f, 220,  8,  150, 0, 0.0f,  0.20f, 0.6f },  // kava
+        { 0.15f,  60, 20,   40, 1, 0.0f,  0.15f, 0.5f },  // khat
+        { 0.40f, 240,  8,  600, 3, 0.2f,  0.35f, 0.9f },  // zolpidem
+        { 0.45f,  50, 30,  400, 5, 0.4f,  0.40f, 0.8f },  // spice
+        { 0.35f,  70, 25,  150, 2, 0.2f,  0.45f, 0.8f },  // solvants
+        { 0.50f, 280,  8, 1000, 2, 0.4f,  0.45f, 0.9f },  // DPH
     }};
     return g;
 }
 
-inline const std::array<Mode, 25>& modes()
+inline const std::array<Mode, numModes>& modes()
 {
-    static const std::array<Mode, 25> table = []
+    static const std::array<Mode, numModes> table = []
     {
-    std::array<Mode, 25> t =
+    std::array<Mode, numModes> t =
     {{
         makeMode (u8"CANNABIS", u8"WEED",
                   u8"Tout ralentit un peu, les basses t'enveloppent, chaque note résonne plus longtemps dans ta tête.",
@@ -307,6 +333,149 @@ inline const std::array<Mode, 25>& modes()
                   0xffff4500, 0xff2f4f4f, 0xffc0c0c0, Visual::Geometry,
                   { {RING,0.4f},{RING_HZ,90.f},{CRUSH,0.35f},{PITCH,-1.5f},{LP,0.3f},{VERB,0.4f},{VERB_SIZE,0.9f},
                     {WOW,3.f},{WOW_RATE,0.1f},{STUTTER,0.2f},{WIDTH,0.4f},{COMP,0.4f},{FLANGE,0.3f},{FLANGE_RATE,0.1f} }),
+
+        // ---------------- 1.2 : 25 substances de plus ----------------
+        makeMode (u8"MORPHINE", u8"MORPH",
+                  u8"Une chaleur propre qui descend dans les épaules : le son s'arrondit, flotte, plus rien ne pique.",
+                  0xffe8c39e, 0xff7a4e2d, 0xfffff1e0, Visual::Melt,
+                  { {LP,0.45f},{VERB,0.5f},{VERB_SIZE,0.8f},{VERB_DAMP,0.7f},{BASS,3.f},{AIR,-4.f},{WOW,1.5f},{WOW_RATE,0.07f},
+                    {COMP,0.4f},{CHORUS,0.2f},{WIDTH,0.9f},{PITCH,-0.5f} }),
+
+        makeMode (u8"OPIUM", u8"OPIUM",
+                  u8"Fumée lourde et rêve éveillé : les notes s'étirent dans une brume ambrée, les échos se perdent au loin.",
+                  0xffc0392b, 0xfff39c12, 0xff4a0e0e, Visual::Smoke,
+                  { {LP,0.4f},{VERB,0.6f},{VERB_SIZE,0.9f},{VERB_DAMP,0.6f},{PHASER,0.2f},{PHASER_RATE,0.05f},{CHORUS,0.3f},
+                    {TREM,0.15f},{TREM_RATE,0.2f},{BASS,3.f},{AIR,-3.f},{DLY,0.2f},{DLY_MS,600.f},{DLY_FB,0.4f},{WIDTH,1.3f} }),
+
+        makeMode (u8"FENTANYL", u8"FENTA",
+                  u8"Écrasant. Le son s'enfonce sous l'eau, s'éteint par moments, il ne reste qu'un souffle grave.",
+                  0xff6c7a89, 0xff1b1f24, 0xffa9b7c6, Visual::Smoke,
+                  { {LP,0.7f},{DROPOUT,0.2f},{VERB,0.7f},{VERB_SIZE,1.f},{VERB_DAMP,0.9f},{COMP,0.7f},{BASS,2.f},{AIR,-9.f},
+                    {WIDTH,0.4f},{PITCH,-1.5f},{WOW,1.f},{WOW_RATE,0.05f},{TREM,0.2f},{TREM_RATE,0.1f} }),
+
+        makeMode (u8"TRAMADOL", u8"TRAMA",
+                  u8"Un coussin léger : tout est un peu plus doux et plus plat, avec une pointe d'énergie.",
+                  0xff9fb4c7, 0xffe2e8f0, 0xff4a5568, Visual::Waves,
+                  { {LP,0.25f},{COMP,0.5f},{VERB,0.25f},{BASS,2.f},{AIR,-1.f},{CHORUS,0.15f},{TREM,0.05f},{TREM_RATE,3.f} }),
+
+        makeMode (u8"KRATOM", u8"KRATOM",
+                  u8"Feuilles vertes, calme alerte : le son est posé, rond, légèrement plus large.",
+                  0xff7fb069, 0xff3d5a3d, 0xffe6aa68, Visual::Waves,
+                  { {AIR,1.f},{BASS,2.f},{CHORUS,0.2f},{VERB,0.2f},{VERB_SIZE,0.5f},{COMP,0.3f},{DRIVE,0.1f},{WIDTH,1.1f},{LP,0.1f} }),
+
+        makeMode (u8"ECSTASY", u8"XTC",
+                  u8"La pilule de club : les basses tapent dans le ventre, les aigus brillent, tout pulse et s'ouvre en grand.",
+                  0xff00e5ff, 0xffff4fd8, 0xfffff35c, Visual::Pulse,
+                  { {TREM,0.3f},{TREM_RATE,2.2f},{AIR,6.f},{WIDTH,1.9f},{DRIVE,0.3f},{COMP,0.5f},{SHIMMER,0.2f},{CHORUS,0.35f},
+                    {VERB,0.3f},{HP,0.05f},{PITCH,0.2f} }),
+
+        makeMode (u8"4-MMC", u8"4-MMC",
+                  u8"Méphédrone : euphorie nerveuse, le son fourmille, accélère, les aigus grésillent.",
+                  0xffb6ff00, 0xffff00c8, 0xffffffff, Visual::Strobe,
+                  { {TREM,0.25f},{TREM_RATE,4.f},{AIR,5.f},{DRIVE,0.35f},{COMP,0.6f},{WIDTH,1.6f},{STUTTER,0.1f},{DLY,0.15f},
+                    {DLY_MS,150.f},{DLY_FB,0.3f},{CHAOS,0.1f},{PITCH,0.4f} }),
+
+        makeMode (u8"PCP", u8"PCP",
+                  u8"Poussière d'ange : corps anesthésié, son lointain et métallique, des coupures brutales.",
+                  0xffff6b35, 0xff2e2e2e, 0xffd9d9d9, Visual::Glitch,
+                  { {DRIVE,0.6f},{LP,0.35f},{WIDTH,0.3f},{VERB,0.45f},{VERB_SIZE,0.7f},{RING,0.2f},{RING_HZ,40.f},{STUTTER,0.25f},
+                    {DROPOUT,0.1f},{COMP,0.7f},{CHAOS,0.3f},{PITCH,-2.f} }),
+
+        makeMode (u8"IBOGAÏNE", u8"IBOGA",
+                  u8"Voyage intérieur interminable : un bourdonnement sourd, des visions qui défilent en boucle.",
+                  0xff8e44ad, 0xff1abc9c, 0xfff4d03f, Visual::Mandala,
+                  { {RING,0.2f},{RING_HZ,8.f},{TREM,0.3f},{TREM_RATE,7.f},{VERB,0.55f},{VERB_SIZE,0.9f},{PHASER,0.3f},{PHASER_RATE,0.07f},
+                    {BASS,4.f},{LP,0.3f},{FLFO,0.3f},{FLFO_RATE,0.05f},{WIDTH,1.4f},{DLY,0.25f},{DLY_MS,700.f},{DLY_FB,0.5f} }),
+
+        makeMode (u8"5-MEO-DMT", u8"5-MEO",
+                  u8"Lumière blanche totale : la mélodie se dissout dans une cathédrale d'harmoniques, plus d'ego, plus de bord.",
+                  0xffffffff, 0xfffff6d5, 0xffb8e2ff, Visual::Rays,
+                  { {SHIMMER,0.9f},{VERB,0.8f},{VERB_SIZE,1.f},{VERB_DAMP,0.2f},{HP,0.2f},{AIR,8.f},{WIDTH,2.f},{TREM,0.2f},
+                    {TREM_RATE,13.f},{CHORUS,0.5f},{COMP,0.3f} }),
+
+        makeMode (u8"LSA", u8"LSA",
+                  u8"Graines d'ipomée : un LSD endormi, couleurs pastel, le son ondule mollement.",
+                  0xff6a5acd, 0xff87ceeb, 0xffffb6c1, Visual::Kaleido,
+                  { {PHASER,0.4f},{PHASER_RATE,0.15f},{CHORUS,0.35f},{LP,0.25f},{VERB,0.35f},{WOW,2.f},{WOW_RATE,0.3f},
+                    {PAN,0.3f},{PAN_RATE,0.15f},{BASS,2.f} }),
+
+        makeMode (u8"DOM", u8"DOM",
+                  u8"Psychédélique-stimulant très long : grilles de couleurs qui vibrent, énergie qui ne redescend pas.",
+                  0xffff3cac, 0xff784ba0, 0xff2b86c5, Visual::Lattice,
+                  { {PHASER,0.5f},{PHASER_RATE,0.4f},{SHIMMER,0.3f},{TREM,0.2f},{TREM_RATE,6.f},{DRIVE,0.25f},{AIR,4.f},
+                    {WIDTH,1.7f},{PAN,0.4f},{PAN_RATE,0.5f},{CHORUS,0.4f},{CHAOS,0.2f} }),
+
+        makeMode (u8"AMANITE", u8"AMANIT",
+                  u8"Tue-mouche : rêve étrange, tailles qui changent, le son grossit et rapetisse, des bouts disparaissent.",
+                  0xffe63946, 0xfff1faee, 0xff2a9d8f, Visual::Mandala,
+                  { {PITCH,-1.f},{WOW,4.f},{WOW_RATE,0.15f},{LP,0.4f},{VERB,0.5f},{VERB_SIZE,0.8f},{STUTTER,0.2f},{DROPOUT,0.1f},
+                    {FLFO,0.3f},{FLFO_RATE,0.1f},{CHORUS,0.3f},{BASS,3.f},{CHAOS,0.3f} }),
+
+        makeMode (u8"MUSCADE", u8"MUSCADE",
+                  u8"Lourd et lent à venir : le son devient épais, cotonneux, avec des absences.",
+                  0xffa0522d, 0xff3e2723, 0xffd2b48c, Visual::Smoke,
+                  { {LP,0.5f},{VERB,0.5f},{VERB_SIZE,0.85f},{VERB_DAMP,0.8f},{WOW,3.f},{WOW_RATE,0.06f},{DROPOUT,0.15f},
+                    {COMP,0.5f},{BASS,3.f},{AIR,-5.f},{STUTTER,0.1f} }),
+
+        makeMode (u8"ABSINTHE", u8"ABSINT",
+                  u8"La fée verte : ivresse scintillante, la mélodie tangue sous des reflets émeraude.",
+                  0xff7cfc00, 0xff006400, 0xffadff2f, Visual::Aurora,
+                  { {WOW,5.f},{WOW_RATE,0.3f},{CHAOS,0.3f},{PHASER,0.3f},{PHASER_RATE,0.2f},{SHIMMER,0.2f},{VERB,0.35f},
+                    {DLY,0.2f},{DLY_MS,330.f},{DLY_FB,0.35f},{PAN,0.3f},{PAN_RATE,0.2f},{AIR,2.f},{DRIVE,0.15f} }),
+
+        makeMode (u8"ADDERALL", u8"ADDY",
+                  u8"Focus total : chaque note est nette, sèche, alignée, rien ne dépasse.",
+                  0xffff8c00, 0xffffd580, 0xff1e1e1e, Visual::Lattice,
+                  { {AIR,3.f},{COMP,0.6f},{HP,0.15f},{PITCH,0.2f},{DRIVE,0.15f},{WIDTH,0.9f},{TREM,0.05f},{TREM_RATE,8.f},{BASS,-1.f} }),
+
+        makeMode (u8"MODAFINIL", u8"MODAF",
+                  u8"Éveil clinique : propre, clair, légèrement plus brillant, sans euphorie.",
+                  0xffe0f7fa, 0xff00acc1, 0xffffffff, Visual::Lattice,
+                  { {AIR,4.f},{COMP,0.35f},{HP,0.1f},{WIDTH,1.1f} }),
+
+        makeMode (u8"CBD", u8"CBD",
+                  u8"Presque rien : les angles s'adoucissent, le son respire calmement.",
+                  0xffa8e6cf, 0xffdcedc1, 0xff3b7a57, Visual::Waves,
+                  { {LP,0.15f},{VERB,0.2f},{VERB_SIZE,0.5f},{BASS,1.5f},{AIR,-1.f},{COMP,0.2f},{CHORUS,0.1f} }),
+
+        makeMode (u8"NICOTINE", u8"NICO",
+                  u8"Petite montée de tête : un léger voile qui passe, puis tout redevient net.",
+                  0xffbdbdbd, 0xff6d4c41, 0xffffe0b2, Visual::Smoke,
+                  { {FLFO,0.2f},{FLFO_RATE,0.3f},{LP,0.15f},{TREM,0.1f},{TREM_RATE,1.f},{COMP,0.3f},{AIR,1.f},{DRIVE,0.1f},{WIDTH,1.1f} }),
+
+        makeMode (u8"KAVA", u8"KAVA",
+                  u8"Racine du Pacifique : détente sociale, bouche engourdie, son chaud et posé.",
+                  0xffc2a878, 0xff556b2f, 0xfff5f5dc, Visual::Waves,
+                  { {LP,0.3f},{VERB,0.3f},{BASS,2.f},{AIR,-2.f},{COMP,0.4f},{CHORUS,0.2f},{WIDTH,1.2f},{TREM,0.1f},{TREM_RATE,0.3f} }),
+
+        makeMode (u8"KHAT", u8"KHAT",
+                  u8"Feuilles mâchées : bavard, alerte, le son sautille et brille un peu.",
+                  0xff2e8b57, 0xffffd700, 0xfff0fff0, Visual::Strobe,
+                  { {AIR,3.f},{TREM,0.15f},{TREM_RATE,5.f},{COMP,0.4f},{DRIVE,0.15f},{HP,0.05f},{PAN,0.2f},{PAN_RATE,1.f} }),
+
+        makeMode (u8"ZOLPIDEM", u8"ZOLPI",
+                  u8"Somnifère où l'on reste éveillé : demi-rêve, objets qui fondent, phrases qui s'effacent.",
+                  0xff1e3a8a, 0xff93c5fd, 0xfff472b6, Visual::Rain,
+                  { {LP,0.4f},{DROPOUT,0.2f},{VERB,0.5f},{VERB_SIZE,0.85f},{WOW,3.f},{WOW_RATE,0.1f},{STUTTER,0.2f},
+                    {CHAOS,0.3f},{WIDTH,1.4f},{BASS,2.f},{SHIMMER,0.15f} }),
+
+        makeMode (u8"SPICE", u8"SPICE",
+                  u8"Cannabinoïde de synthèse : panique numérique, boucles qui se coincent, son dur et sale.",
+                  0xff39ff14, 0xffff073a, 0xff0d0d0d, Visual::Glitch,
+                  { {CRUSH,0.3f},{STUTTER,0.35f},{DRIVE,0.5f},{LP,0.3f},{DROPOUT,0.15f},{CHAOS,0.5f},{RING,0.15f},{RING_HZ,60.f},
+                    {PAN,0.4f},{PAN_RATE,2.f},{COMP,0.6f},{VERB,0.25f} }),
+
+        makeMode (u8"SOLVANTS", u8"SOLV",
+                  u8"Colle et gaz : bourdonnement métallique, effet tunnel, le son vibre dans le crâne.",
+                  0xffd4d4d4, 0xffff9800, 0xff607d8b, Visual::Tunnel,
+                  { {FLANGE,0.7f},{FLANGE_RATE,5.f},{RING,0.25f},{RING_HZ,25.f},{LP,0.45f},{TREM,0.4f},{TREM_RATE,6.f},{DLY,0.3f},
+                    {DLY_MS,200.f},{DLY_FB,0.5f},{DROPOUT,0.1f},{COMP,0.4f},{WIDTH,1.3f} }),
+
+        makeMode (u8"DPH", u8"DPH",
+                  u8"Délirant antihistaminique : silhouettes dans le coin de l'œil, voix fantômes, la pièce n'est plus la même.",
+                  0xff4b0082, 0xff000000, 0xff8b008b, Visual::Rain,
+                  { {LP,0.55f},{DROPOUT,0.25f},{STUTTER,0.3f},{VERB,0.6f},{VERB_SIZE,0.95f},{VERB_DAMP,0.85f},{RING,0.15f},
+                    {RING_HZ,5.f},{CHAOS,0.5f},{PAN,0.45f},{PAN_RATE,0.07f},{CRUSH,0.2f},{AIR,-6.f},{BASS,2.f} }),
     }};
     for (size_t i = 0; i < t.size(); ++i)
     {
@@ -326,5 +495,62 @@ inline juce::StringArray modeNames()
     for (auto& m : modes())
         s.add (juce::String::fromUTF8 (m.name));
     return s;
+}
+
+// Couches de mélange : "AUCUN" + les 50 substances
+inline juce::StringArray layerNames()
+{
+    juce::StringArray s { juce::String::fromUTF8 (u8"AUCUN") };
+    s.addArray (modeNames());
+    return s;
+}
+
+// Bornes de chaque valeur après mélange / overdose
+inline float clampValue (int i, float v)
+{
+    switch (i)
+    {
+        case PITCH:  return juce::jlimit (-12.0f, 12.0f, v);
+        case WOW:    return juce::jlimit (0.0f, 25.0f, v);
+        case LP:     return juce::jlimit (0.0f, 0.85f, v);
+        case HP:     return juce::jlimit (0.0f, 0.6f, v);
+        case WIDTH:  return juce::jlimit (0.0f, 2.5f, v);
+        case DLY_FB: return juce::jlimit (0.0f, 0.88f, v);
+        case G_FB:   return juce::jlimit (0.0f, 0.8f, v);
+        case AIR: case BASS: return juce::jlimit (-12.0f, 10.0f, v);
+        case WOW_RATE: case FLFO_RATE: case RING_HZ: case TREM_RATE: case PAN_RATE: case DLY_MS:
+        case VERB_SIZE: case VERB_DAMP: case PHASER_RATE: case FLANGE_RATE: case G_SIZE: case G_DENS:
+        case G_SPRAY: case G_PITCH: case G_SPREAD:
+            return v;
+        default:     return juce::jlimit (0.0f, 1.0f, v);
+    }
+}
+
+// Fusion de plusieurs substances : la principale + les écarts au "sobre" des couches
+// (pondérés par leur dosage). Les vitesses / tailles sont moyennées.
+inline Values mergeModes (int primary, const int* layers, const float* weights, int numLayers)
+{
+    const auto neutral = neutralValues();
+    Values v = modes()[(size_t) primary].values;
+    float wSum = 1.0f;
+    Values rateSum = v;
+    for (int k = 0; k < numLayers; ++k)
+    {
+        if (layers[k] < 0 || weights[k] <= 0.0f) continue;
+        const auto& lv = modes()[(size_t) layers[k]].values;
+        for (int i = 0; i < NUM_P; ++i)
+        {
+            if (isDoseScaled (i)) v[(size_t) i] += weights[k] * (lv[(size_t) i] - neutral[(size_t) i]);
+            else                  rateSum[(size_t) i] += weights[k] * lv[(size_t) i];
+        }
+        wSum += weights[k];
+        if (v[G_PITCH] == 0.0f && weights[k] >= 0.5f) v[G_PITCH] = lv[G_PITCH];
+    }
+    for (int i = 0; i < NUM_P; ++i)
+    {
+        if (! isDoseScaled (i) && i != G_PITCH) v[(size_t) i] = rateSum[(size_t) i] / wSum;
+        v[(size_t) i] = clampValue (i, v[(size_t) i]);
+    }
+    return v;
 }
 } // namespace hitr
