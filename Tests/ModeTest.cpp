@@ -146,6 +146,55 @@ int main (int argc, char** argv)
         std::printf ("\nSOBRIÉTÉ (bypass) : latence %d éch., écart max %.2e  %s\n", lat, err, ok ? "OK" : "PROBLEME");
     }
 
+    // COMPATIBILITÉ : un projet sauvé en 1.0 ou 1.1 doit se rouvrir à l'identique
+    {
+        auto check = [&] (const char* label, const char* xmlText, std::initializer_list<std::pair<const char*, float>> expect)
+        {
+            auto xml = juce::parseXML (juce::String (xmlText));
+            juce::MemoryBlock mb;
+            juce::AudioProcessor::copyXmlToBinary (*xml, mb);
+            HitrProcessor p;
+            p.setPlayConfigDetails (2, 2, sr, block);
+            p.setStateInformation (mb.getData(), (int) mb.getSize());
+            p.prepareToPlay (sr, block);
+            bool ok = true;
+            for (auto& [id, v] : expect)
+            {
+                const float got = p.apvts.getRawParameterValue (id)->load();
+                if (std::abs (got - v) > 1.0e-4f) { ok = false; std::printf ("   %s : %g au lieu de %g\n", id, got, v); }
+            }
+            // et ça doit sonner sans souci
+            juce::AudioBuffer<float> buf (2, block);
+            juce::MidiBuffer midi;
+            for (int b = 0; b < 100; ++b)
+            {
+                for (int i = 0; i < block; ++i) { const float s = 0.4f * std::sin ((float) (b * block + i) * 0.05f); buf.setSample (0, i, s); buf.setSample (1, i, s); }
+                p.processBlock (buf, midi);
+                for (int i = 0; i < block; ++i) if (! std::isfinite (buf.getSample (0, i))) ok = false;
+            }
+            if (! ok) ++failures;
+            std::printf ("Projet %s : %s\n", label, ok ? "OK" : "PROBLEME");
+        };
+        std::printf ("\n");
+        // état tel que l'écrivait la 1.0 (5 paramètres)
+        check ("1.0 (Salvia, dose 45 %, mix 80 %)",
+               "<HITR><PARAM id=\"mode\" value=\"16\"/><PARAM id=\"dose\" value=\"0.45\"/><PARAM id=\"mix\" value=\"0.8\"/>"
+               "<PARAM id=\"trip\" value=\"1.5\"/><PARAM id=\"output\" value=\"-3\"/></HITR>",
+               { { "mode", 16.f }, { "dose", 0.45f }, { "mix", 0.8f }, { "trip", 1.5f }, { "output", -3.f },
+                 { "mode2", 0.f }, { "heat", 0.f }, { "clip", 0.f }, { "sobriety", 0.f }, { "overdose", 0.f },
+                 { "width", 1.f }, { "grain", 0.5f }, { "sync", 1.f }, { "transpose", 0.f } });
+        // état tel que l'écrivait la 1.1
+        check ("1.1 (DXM, MS 420 ms, freeze, width 150 %)",
+               "<HITR><PARAM id=\"mode\" value=\"24\"/><PARAM id=\"dose\" value=\"0.9\"/><PARAM id=\"mix\" value=\"1\"/>"
+               "<PARAM id=\"trip\" value=\"1\"/><PARAM id=\"output\" value=\"0\"/><PARAM id=\"width\" value=\"1.5\"/>"
+               "<PARAM id=\"grain\" value=\"0.7\"/><PARAM id=\"gsize\" value=\"2\"/><PARAM id=\"gdens\" value=\"1\"/>"
+               "<PARAM id=\"freeze\" value=\"1\"/><PARAM id=\"sync\" value=\"0\"/><PARAM id=\"division\" value=\"6\"/>"
+               "<PARAM id=\"delayms\" value=\"420\"/><PARAM id=\"transpose\" value=\"1\"/></HITR>",
+               { { "mode", 24.f }, { "dose", 0.9f }, { "width", 1.5f }, { "grain", 0.7f }, { "gsize", 2.f }, { "freeze", 1.f },
+                 { "sync", 0.f }, { "division", 6.f }, { "delayms", 420.f }, { "transpose", 1.f },
+                 { "mode2", 0.f }, { "heat", 0.f }, { "fatten", 0.f }, { "ott", 0.f }, { "sobriety", 0.f } });
+    }
+
     std::printf (failures == 0 ? "\nTous les tests OK\n" : "\n%d test(s) a revoir\n", failures);
     return failures;
 }
